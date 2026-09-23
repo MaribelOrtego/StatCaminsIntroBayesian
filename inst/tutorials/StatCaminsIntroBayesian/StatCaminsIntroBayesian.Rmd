@@ -1,0 +1,344 @@
+---
+title: "Intro a Estadística Bayesiana. Part1"
+subtitle: "
+<div id='logo-nom-subtitle' style='text-align:center;'>
+  <img src='www/logoUPC.png' style='height:50px; display:block; margin:0 auto 5px auto;'>
+  <p style='margin:0; font-weight:bold; color:#0055A4 !important;.  font-size:16px;'>Maribel Ortego</p>
+</div>"
+author: "Maribel Ortego"
+date: "`r format(Sys.time(), '%Y %B %d')`"
+
+output:
+ learnr::tutorial:
+    progressive: false
+    theme:
+      bslib: true
+      bootswatch: minty
+    css:
+      - "css/styles.css"
+      - "css/hero-image-css-v2.css"
+    includes:
+      in_header: "www/hero-image-PiE.html"
+    number_sections: TRUE
+    toc: true
+    toc_depth: 4
+    toc_float: true
+
+runtime: shiny_prerendered
+bibliography: bayesianrefbib.bib 
+
+---
+
+```{r, label="generaloptions", include=FALSE}
+# Configuració general del tutorial
+library(learnr)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  fig.width = 6,
+  out.width = "50%",
+  fig.align = "center",
+  fig.caption = TRUE,
+  fig.path = "images/"
+)
+```
+
+# Introducció
+
+## Introducció 
+
+Aquest tutorial ens servirà per a donar les primeres passes en la visió Bayesiana de l'Estadística. Utilitzarem un exemple senzill, del que es té una solució analítica, com a fil conductor. A la Part1 aplicarem la solució analítica i a la Part2 del tutorial utilitzarem una eina específica d'estimació bayesiana, `RStan` (@RStan).
+
+# Conceptes previs
+
+## Conceptes previs
+
+En la descripció dels mètodes Bayesians trobarem alguns conceptes de modelització estadística: variable aleatòria, funció de densitat i de distribució d'una variable aleatòria, models... Abans de començar, recordem alguns conceptes necessaris per seguir de forma fluida tot el tutorial:
+
+### Models de distribucions de probabilitat:
+
+- Distribució de Bernoulli:  Si $X \sim Be(p)$, aleshores la seva funció de probabilitat és: 
+$$P[X = x] = p^x (1 - p)^{1 - x}, \quad x \in \{0,1\}  \ . $$
+
+- Distribució Binomial : Si $X \sim Bin(n, p)$, aleshores la seva funció de probabilitat és:  
+$$P[X = k] = \binom{n}{k} p^k (1 - p)^{n - k}, \quad k = 0,1,\dots,n  \ . $$
+
+- Distribució Beta: Si $X \sim Beta(a,b)$, aleshores la seva funció de densitat és:  
+$$f(x; \alpha, \beta) = \frac{x^{\alpha - 1}(1 - x)^{\beta - 1}}{B(\alpha, \beta)}, \quad 0<x< 1,\quad  \alpha>0,\quad \beta>0$$
+on la funció Beta és:
+$$B(\alpha, \beta) = \frac{\Gamma(\alpha)\Gamma(\beta)}{\Gamma(\alpha + \beta)}  \ . $$
+
+### D'altres conceptes importants:                
+- Teorema de Bayes: Si A i B són dos esdeveniments d'un experiment aleatori, $A, B \in \mathrm{A}$, tal que $P[B]>0$ :
+$$P[A|B] = \frac{P[B|A]P[A]}{P[B]} \ .$$
+
+- Transformació Logit: Si $x \in [a,b]$, la transformació logit ens permet transformar a un valor a $\mathrm{R}$.
+En el cas general,
+$$\text{logit}(x) = \log\left(\frac{x-a}{b - x}\right)$$.
+Pel cas particular de $p \in [0,1]$,
+$$\text{logit}(p) = \log\left(\frac{p}{1 - p}\right) , $$ on la notació $\log$ indica el logaritme neperià.
+
+::: {.infobox .circle data-latex="{circle}"}
+<span style="font-size: 18px;">***EXERCICI:***</span> 
+
+<span style="font-size: 17px;">Escriu l'expressió de la transformació LOGIT per un valor $x$ mesurat en ppm. Busca el valor transformat per un valor de 474589 ppm.
+:::
+
+```{r exercici-logit,  exercise=TRUE, exercise.has_hint=TRUE}
+
+```
+
+```{r exercici-logit-hint, echo=FALSE}
+Recorda que els valors de $ppm$ van entre $1$ i $10^6$. Modifica la fòrmula anterior. 
+```
+
+# Llibreries
+
+Activem les llibreries necessàries i algunes opcions:
+
+```{r llibreries, message=FALSE}
+library("car")  #necessària per densityPlot
+
+library(rstan)
+(ncores <- parallel::detectCores())
+options(mc.cores=ncores)
+rstan_options(auto_write=TRUE)
+#options(mc.cores = parallel::detectCores())
+
+#install.packages("bayesplot")
+library("bayesplot")
+library("ggplot2")
+```
+
+## L'exemple de referència
+
+Aquest material està inspirat a l'annex de @Rcompanion3rd, posat a disposició pels autors.
+<!--  An R Companion to Applied Regression, #3rd Edition 
+#      J. Fox and S. Weisberg, Sage #Publications      
+#   Script for Appendix on Bayesian #Estimation        
+#                 of Regression Models   
+
+-->
+
+En aquest tutorial repassarem els conceptes bàsics de l'estimació bayesiana i mostrarem com utilitzar el programa Stan, a través del paquet rstan, per a l'estimació bayesiana en general.
+
+# Idees bayesianes bàsiques
+
+Per revisar els conceptes bàsics de l'estimació bayesiana, adaptem un exemple de [@Rcompanion3rd, Sec. 3.7]  <!--(2009, Secció 3.7)-->, que casualment és similar a un exemple en [@Stan, Sec. 2.1]<!--(Carpenter et al. (2017, Secció 2.1))-->: 
+
+## La situació:
+
+Volem estimar la probabilitat $0 \leq \phi \leq  1$ que una moneda surti cara, pensant en aquest paràmetre desconegut com una propietat de la moneda. Estem impacients, així que recopilem dades llançant la moneda només 10 vegades, d'on obtenim la seqüència $H; H; T; H; T; T; T; T; H; T$ de cares ($H$) i creus ($T$) (Utilitzem H per Heads  i T per Tails en anglès. Així evitem un problema amb la tria de la lletra per a la notació de creus). 
+
+La probabilitat d'observar aquesta mostra de dades donat el paràmetre $\phi$ és:
+
+\[
+P[\text{dades$|$parametre}] = P[HHTHTTTTHT| \phi] =
+\]
+\[
+\phi \phi(1-\phi)\phi(1-\phi)(1-\phi)(1-\phi)(1-\phi)(1-\phi) =
+\phi^{4} (1-\phi)^{6} \ .
+\]
+
+La probabilitat de 10 proves Bernoulli independents $Y_i; i = 1; \dots ; 10$, on $Y_i = 1$ quan el i-èsim llançament produeix una cara, zero quan produeix una creu, i per a les quals $P(Y_i = 1) = \phi$. La funció de versemblança inverteix aquesta equació tractant les dades observades com a fixades condicionalment i el paràmetre desconegut $\phi$ com a variable en el seu rang potencial:
+
+\[
+P[\phi|HHTHTTTTHT] = \phi^{4} (1-\phi)^{6} \ .
+\]
+
+La probabilitat $\phi$ varia de forma contínua entre zero i 1; aquí teniu alguns valors representatius de la versemblança en aquest rang:
+
+$$
+\phi \hspace{1cm} L(\phi)\\
+0.0 \hspace{1cm} 0\\
+0.1 \hspace{1cm} 0.00005314\\
+0.2 \hspace{1cm} 0.00041943\\
+0.3 \hspace{1cm} 0.00095296\\
+0.4 \hspace{1cm} 0.00119439\\
+0.5 \hspace{1cm} 0.00097656\\
+0.6 \hspace{1cm} 0.00053084\\
+0.7 \hspace{1cm} 0.00017503\\
+0.8 \hspace{1cm} 0.00002621\\
+0.9 \hspace{1cm} 0.00000066\\
+1.0 \hspace{1cm} 0\\
+$$
+Com és lògic, L(0) = 0, perquè si $\phi$ fos zero, no podríem observar cap cara, i hem observat 4 cares; de manera similar, L(1) = 0, perquè si $\phi$ = 1, no podríem observar cap creu. La Figura \@ref(fig:plotlik) , dibuixada pels següents comandaments de R, mostra la funció de versemblança completa.
+
+Primer generem uns quants valors de $\phi$ per a la representació gràfica:
+
+```{r phiseq}
+phi <- seq(0, 1, length=500)
+```
+
+Definim la versemblança:
+
+```{r like}
+#likelihood
+L <- phi^4 * (1 - phi)^6
+```
+
+Representem la versemblança:
+<!-- # ```{r plotlik, fig.cap="Funció de versemblança $L(\phi)$ per a l'experiment de llançament de monedes, havent observat la seqüència H;H; T;H; T; T; T; T;H; T de 4 cares i 6 creus. L'estimació de màxima versemblança $\phi = 0.4$ està marcada al gràfic."} -->
+
+```{r plotlik, fig.cap="Figura 1:Funció de versemblança amb indicació d'estimació de màxima versemblança"}
+plot(phi, L, type="l", lwd=2, xlab=expression(phi), ylab=expression(L(phi)))
+abline(h=0, col="darkgray")
+abline(v=0.4, h=max(L), lty=2)
+text(0.4, -0.00025, expression(hat(phi)), xpd=TRUE)
+```
+::: {.infobox .circle data-latex="{circle}"}
+<span style="font-size: 17px;">Observa la corba de la versenmblança. Observa el valor marcat. L'estimació de màxima versemblança és el màxim. **Com el trobaries analíticament**?
+:::
+
+El màxim de la funció de versemblança s'aconsegueix a $\phi$ = 0.4, l'estimació de màxima versemblança de $\phi$, que és simplement la proporció observada de 4 de 10 cares.
+
+_Observació_: Un enfoc alternatiu: En comptes de fixar-nos en la seqüència observada de cares i creus, podríem comptar en canvi el nombre observat de cares en els 10 llançaments independents de la moneda. Aquest nombre, diguem-ne \(Y = 4\), té la següent probabilitat de la distribució binomial:
+
+\[
+P[Y = 4] = \frac{10!}{4!(10-4)!}\phi^4(1-\phi)^{10-4} \ .
+\]
+
+Com que $(10! / (4! * (10 - 4)!)$  és una constant, il·lustra el fet que el nombre de cares és un estadístic suficient per a $\phi$ (és a dir, utilitza tota la informació sobre $\phi$ en les dades) i per tant utilitzar la versemblança binomial correspon a la mateixa anàlisi que utilitzar la versemblança de Bernoulli. 
+
+## El punt de vista Bayesià
+
+La inferència bayesiana rep el nom del reverend Thomas Bayes, un matemàtic britànic del segle XVIII, que va formular el Teorema de Bayes. En la seva versió més simplificada, si A i B són dos esdeveniments de l'espai mostral, $A, B \in \mathrm{A}$
+
+\[
+P[A|B] = \frac{P[B|A]P[A]}{P[B]} \ .
+\]
+
+On es dona la següent interpretació als esdeveniments A i B:
+
+- $A$ és una proposició incerta de la qual volem establir la "veritat", com ara que la probabilitat de sortir cara per a una moneda sigui 0.5.
+-  $B$ representa la informació que hem recollit per a comprovar aquesta proposició, com ara la nostra observació d'una seqüència de 4 cares i 6 creus en 10 llançaments de la moneda.
+- $P[A]$ és la probabilitat a priori de $A$, formulada abans de començar a recopilar dades i que representa la força de la nostra creença sobre $A$.
+- $P[B|A]$ és la probabilitat condicional d'observar les dades obtingudes assumint $A$, per exemple, la probabilitat de la seqüència obtinguda de cares i creus donada la probabilitat d'observar una cara és 0.5.
+- $P[B]$ és la probabilitat total de $B$, que podem obtenir/reconstruïr aplicant el Teorema de les probabilitats totals:  $P[B]=P[B|A]P[A] + P[B|\overline{A}](1-P[A])$, 
+on $\overline{A}$ (no $A$) ens indica el complementari de $A$.
+- Ara $P[A|B]$ és la probabilitat a posteriori de creure en $A$, actualitzant la probabilitat inicial amb les dades recollides.
+
+## La mirada bayesiana al problema
+
+La versió del Teorema de Bayes que es presenta en cursos introductoris és la seva versió discreta, però el teorema es pot generalitzat fàcilment a la seva versió contínua, on canviem les funcions de probabilitat per amb funcions de densitat. Aquesta és la versió més general que utilitzarem a la resta del text.
+
+En el paradigma Bayesià els paràmetres són aleatoris. En contrast amb l'estimació de màxima versemblança, que es basa únicament en les dades observades, la inferència bayesiana requereix que expressem les nostres _creences prèvies_ (_priori_) sobre el paràmetre $\phi$ com una funció de densitat de probabilitat sobre els valors que pot prendre, i es combina aquesta distribució a priori amb la funció de versemblança.
+
+Per exemple, si creiem que tots els valors de $\phi$, $\phi \in [0,1]$, són igualment probables, això implica una distribució a priori plana, $p(\phi$) = 1. És a dir, considerem que tots els valors de l'intèrval [0,1] tenen la mateixa probabilitat. (Observeu que és densitat perquè l'àrea sota la corresponent corba és 1: $\int_1^0 p(\phi) d\phi = 1$).
+
+La densitat a posteriori bayesiana de $\phi$ és el producte de la densitat a priori i la versemblança, normalitzada per integrar a 1:
+
+\[
+P(\phi|data) = \frac{p(\phi)L(\phi|data)}{\int_{0}^{1}P(\phi')L(\phi'|data)d\phi'}
+\]
+
+Si triem la distribució a priori plana p($\phi$) = 1, la densitat a posteriori és simplement proporcional a la versemblança. Podem representar la densitat a posteriori i fer inferència amb la corba complerta. Però si prenem la moda de la densitat a posteriori com a representant de la corba i l'utilitzam com a estimació puntual bayesiana de $\phi$, llavors les estimacions bayesianes i de màxima versemblança coincideixen. Alternativament, podríem utilitzar la mitjana o la mediana de la densitat  a posteriori com a representants de la corba de densitat.
+
+A partir de la densitat a posteriori també podem calcular un equivalent bayesià d'un interval de confiança, anomenat _interval de credibilitat_, basat en quantils de la distribució a posteriori; per exemple, la probabilitat és del 0.95 que $\phi$ estigui entre els quantils 0.025 i 0.975. Per tant, un interval de credibilitat té una interpretació més directa que un interval de confiança *frequentista*: els bayesians consideren els paràmetres desconeguts com a variables aleatòries.
+
+### Un detall important
+Una detall sorprenent és que una distribució a priori uniforme pel paràmetre \(\phi\) no és en general una distribució a priori uniforme si utilitzem una transformació del paràmetre \(\phi\), com ara la transformació logit \(\phi' = \log[\phi/(1-\phi)]\), i viceversa. De fet, una distribució a priori uniforme en \(\phi'\) és impròpia (envolta una àrea infinita, no 1), perquè \(\phi'\) no està acotada ni a baix ni a dalt, i atorga una alta probabilitat als valors de \(\phi\) que estan prop de zero i de 1. És possible formular un priori, anomenat _priori de Jeffreys_, que sigui invariant respecte a la transformació d'un paràmetre, però també té les seves limitacions (veure, per exemple, [@PhilosphyBayesian Sec. 2.8]). <!--Si no esteu familiaritzats amb el càlcul, aquesta equació simplement estableix que l'àrea sota la línia horitzontal recta \(p(\phi) = 1\) entre \(\phi = 0\) i \(\phi = 1\), és a dir, el quadrat unitari, envolta una àrea de 1.-->
+
+## Altres prioris
+
+A l'apartat anterior hem utilitzal la distribució uniforme sobre [0,1] com a priori, és a dir, hem considerat que tots els valors de l'intèrval [0,1] eren igual de probables com a valors de $\phi$. Suposem ara que tenim creences a priori més fortes sobre el valor de $\phi$. Per exemple, mirem la moneda i observem que té tant una cara com una creu, i que no sembla que hi hagi pesos diferents a les dues cares. Deduïm que $\phi$ ha de ser bastant a prop de 0.5, segurament entre 0.2 i 0.8. Per a modelitzar aquesta idea prèvia, utilitzarem un altre model de probabilitat. La família de distribucions Beta proporciona un conjunt flexible de densitats a priori per a una paràmetre com $\phi$, que té suport a [0,1]. Les distribucions Beta depenen de dos paràmetres de forma, $\alpha$ i $\beta$, i tenen  funció de densitat:
+
+\[
+P[\phi| \alpha,\beta] = \frac{\phi^{\alpha-1}(1-\phi)^{\beta-1}}{B(\alpha,\beta} \ per \  0\leq\phi\leq 1
+\]
+
+on $B(\alpha, \beta)$ és una constant de normalització que fa que $p[\phi$|\alpha,\beta] integrin a 1. La fórmula de la funció $B(\alpha, \beta)$ no és especialment important per a nosaltres, més enllà de saber que existeix:
+\[
+B(\alpha,\beta) = \frac{\Gamma(\alpha)\Gamma(\beta)}{\Gamma(\alpha+\beta)} on \Gamma(v) = \int_{0}^{\inf} e^-v z^v-1 dz
+\]
+
+El model Beta és molt flexible. Depenent de la combinació de paràmetres, podem obtenir funcions de densitat simètriques i amb asimetries a dreta i esquerra, mantenint el mateix suport.
+A les Figures \@ref(fig:betadist) i \@ref(fig:betadistassim) es mostren alguns exemples de distribucions Beta, amb densitats simètriques, produïdes per $\alpha = \beta$  i densitats asimètriques, produïdes per $\alpha \neq \beta$.
+
+::: {.infobox .circle data-latex="{circle}"}
+<span style="font-size: 20px">Observa les diferents densitats de beta. Quina triaries per modelitzar les idees prèvies sobre el paràmetre `phi`?
+:::
+
+```{r betadist, fig.cap="Prioris Beta per a diverses opcions dels paràmetres de forma, simètrics"}
+.par <- par(mfrow=c(1, 2))
+plot(0:1, c(0, 5), type="n", xlab=expression(phi), 
+     ylab=expression(p(phi)), main="(a)")
+lines(phi, dbeta(phi, 1, 1), lwd=2)
+lines(phi, dbeta(phi, 4, 4), lwd=2, lty=2)
+lines(phi, dbeta(phi, 8, 8), lwd=2, lty=3)
+legend("top", inset=0.02, legend=c(expression(alpha == 1 ~~ beta == 1),
+                                   expression(alpha == 4 ~~ beta == 4),
+                                   expression(alpha == 8 ~~ beta == 8)),
+       lty=1:3, lwd=2, title="Symmetric Beta Priors", bty="n")
+```
+
+```{r betadistassim, fig.cap="Prioris Beta per a diverses opcions dels paràmetres de forma,  asimètrics"}
+plot(0:1, c(0, 5), type="n", xlab=expression(phi), 
+     ylab=expression(p(phi)), main="(b)")
+lines(phi, dbeta(phi, 1, 4), lwd=2)
+lines(phi, dbeta(phi, 4, 1), lwd=2, lty=2)
+lines(phi, dbeta(phi, 4, 8), lwd=2, lty=3)
+lines(phi, dbeta(phi, 8, 4), lwd=2, lty=4)
+legend("top", inset=0.02, legend=c(expression(alpha == 1 ~~ beta == 4),
+                                   expression(alpha == 4 ~~ beta == 1),
+                                   expression(alpha == 4 ~~ beta == 8),
+                                   expression(alpha == 8 ~~ beta == 4)),
+       lty=1:4, lwd=2, title="Asymmetric Beta Priors", bty="n")
+```
+
+Si pensem en l'exemple de la moneda, sembla que Beta(8, 8) reflecteix aproximadament les nostres creences prèvies sobre $\phi$; Si ens fixem, Beta(1, 1) correspon al priori pla (uniforme o no informatiu) $p(\phi) = 1$. 
+
+La Figura \@ref(fig:plotpost) mostra les densitats a posteriori que obtenim si utilitzem el priori pla Beta(1, 1) o si utilitzem el priori informatiu Beta(8, 8). 
+
+En aquest cas particular, la expressió del posteriori és analítica. És a dir, podríem demostrar analíticament que la densitat a posteriori té també una distribució Beta (no farem els càlculs). La densitat Beta a posteriori és Beta(5, 7) si utilitzem el priori pla,  i Beta(12, 14) si utilitzem el priori informatiu. 
+
+Que les distribucions a priori i posteriori estiguin en la mateixa família (Beta) es pot considerar una bona propietat. Es diu que la distribució Beta és un _priori conjugat_ per a la versemblança Bernoulli.
+
+### I si triem altres prioris?
+
+La tria del priori és una part important del procés de modelització. A continuació calculem i representem les densitats a posterior corresponents a diferents prioris beta.
+
+::: {.infobox .circle data-latex="{circle}"}
+<span style="font-size: 20px">Observa els diferents posterioris. Com canvien?
+:::
+
+Observeu que el priori afecta menys quan $n$ augmenta:
+
+```{r plotpost, fig.cap="Distribucions a posteriori per a l'experiment de llançament de monedes amb 4 cares i 6 creus, corresponents als prioris no informatius Beta(1, 1) i informatius Beta(8, 8)"}
+plot(phi, dbeta(phi, 12, 13), type="l", lwd=2, xlab=expression(phi), 
+     ylab=expression(p(phi)))
+lines(phi, dbeta(phi, 5, 7), lty=2, lwd=2)
+legend("topright", legend=c("for Beta(8, 8) prior", "for Beta(1, 1) prior"),
+       lty=1:2, lwd=2, title="Posterior Distributions", bty="n", inset=0.02)
+```
+
+Com afecta el priori? Utilitzar el priori Beta(8, 8) enlloc de Beta(1,1) té el mateix efecte que afegir 7 cares i 7 creus a les dades. Veiem que la moda de la distribució posterior s'apropa molt a $\phi$ = 0.5 i també disminueix la variabilitat del posteriori. Per tant, si la mida de la mostra $n$ creix, l'impacte del priori sobre el posteriori disminuirà; i si la mostra fos prou gran, les dades (a través de la versemblança) dominarien completament el priori.
+
+La generalització d'aquest exemple és immediata: Si llancem la moneda n vegades observant $h$ cares i $n - h$ creus en una seqüència concreta, llavors la versemblança de Bernoulli és $L(\phi) = \phi^h(1-\phi)^(n-h)$. Utilitzant el priori conjugat $Beta(\alpha, \beta)$, la densitat a posteriori és $Beta(h + \alpha, n - h + \beta)$, que és com afegir $\alpha- 1$ cares i $\beta - 1$ creus a les dades.
+
+### Generalització
+Al nostre exemple de llançament de monedes, hem formulat un model de probabilitat amb un únic paràmetre, $\phi$, la probabilitat d'una cara en un llançament individual de la moneda.
+
+Els models estadístics, com ara els models de regressió, tenen molts més paràmetres. El marc d'inferència bayesiana s'estén de manera directa a aquests models de múltiples paràmetres: 
+
+- Es recullen els paràmetres del model en el vector $\phi = (\phi_1, \phi_2, ..., \phi_p)$ i les dades observades en $D$, sovint una matriu de dades. 
+
+- La funció de versemblança és $L(\phi|D)$, la densitat a priori multivariada és $p(\phi)$, i la densitat posterior multivariada pels paràmetres és, com en el cas de un sol paràmetre, el producte normalitzat de la versemblança i la densitat a priori:
+
+\[
+P[\phi|D] = \frac{P[\phi]L(\phi|D)}{\int\phi' P[\phi']L(\phi'|D)d\phi'}
+\]
+
+- La inferència es sol centrar en la densitat a posteriori marginal de cada un dels paràmetres individuals $\phi_j$ en $\phi$, per a la qual, per exemple, podem formular una estimació puntual, com la mitjana a posteriori, i un intèrval de credibilitat.
+
+## Sempre es pot treballar així?
+El cas triat és especial perquè la densitat a posteriori té una expressió analítica, que a més identifiquem com un densitat `Beta`.
+
+En la majoria d'aplicacions no és tan senzill. Els prioris multidimensionals no són analítics i cal emprar mètodes computacionals per a aproximar-los, sovint amb tècniques de càlcul intensiu. 
+A la Part2 d'aquest tutorial veurem com plantejaríem la resolució del problema utilitzant eines específiques, en aquest cas `RStan`.
+
+## Referències {-} 
+
+
+
+
+

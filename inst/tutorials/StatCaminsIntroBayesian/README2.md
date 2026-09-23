@@ -1,7 +1,5 @@
 # StatCaminsIntroBayesian
 
-Introducció a mètodes bayesians.
-
 StatCaminsIntroBayesian Package. Download and install it
 
 # First steps to activate the tutorial

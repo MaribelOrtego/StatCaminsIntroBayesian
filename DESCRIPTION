@@ -1,0 +1,14 @@
+Package: StatCaminsIntroBayesian
+Title: Introducció a mètodes Bayesians. Part1
+Version: 0.1.0
+Authors@R: 
+    person("Maribel", "Ortego", 
+    email= "ma.isabel.ortego@upc.edu", 
+    role = c("aut", "cre"))
+Description: Introducció a mètodes Bayesians. Part1. Definicions i aplicació a exemple moneda.
+License: AGPL (>= 3)
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 8.0.0
+Suggests: 
+    learnr
