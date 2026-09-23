@@ -93,6 +93,8 @@ Recorda que els valors de $ppm$ van entre $1$ i $10^6$. Modifica la fòrmula ant
 
 # Llibreries
 
+## Llibreries
+
 Activem les llibreries necessàries i algunes opcions:
 
 ```{r llibreries, message=FALSE}
