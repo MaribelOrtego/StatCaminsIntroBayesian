@@ -42,19 +42,19 @@ knitr::opts_chunk$set(
 )
 ```
 
-# Introducció
+## Introducció
 
-## Introducció 
+### Introducció 
 
 Aquest tutorial ens servirà per a donar les primeres passes en la visió Bayesiana de l'Estadística. Utilitzarem un exemple senzill, del que es té una solució analítica, com a fil conductor. A la Part1 aplicarem la solució analítica i a la Part2 del tutorial utilitzarem una eina específica d'estimació bayesiana, `RStan` (@RStan).
 
-# Conceptes previs
-
 ## Conceptes previs
+
+### Conceptes previs
 
 En la descripció dels mètodes Bayesians trobarem alguns conceptes de modelització estadística: variable aleatòria, funció de densitat i de distribució d'una variable aleatòria, models... Abans de començar, recordem alguns conceptes necessaris per seguir de forma fluida tot el tutorial:
 
-### Models de distribucions de probabilitat:
+#### Models de distribucions de probabilitat:
 
 - Distribució de Bernoulli:  Si $X \sim Be(p)$, aleshores la seva funció de probabilitat és: 
 $$P[X = x] = p^x (1 - p)^{1 - x}, \quad x \in \{0,1\}  \ . $$
@@ -67,7 +67,7 @@ $$f(x; \alpha, \beta) = \frac{x^{\alpha - 1}(1 - x)^{\beta - 1}}{B(\alpha, \beta
 on la funció Beta és:
 $$B(\alpha, \beta) = \frac{\Gamma(\alpha)\Gamma(\beta)}{\Gamma(\alpha + \beta)}  \ . $$
 
-### D'altres conceptes importants:                
+#### D'altres conceptes importants:                
 - Teorema de Bayes: Si A i B són dos esdeveniments d'un experiment aleatori, $A, B \in \mathrm{A}$, tal que $P[B]>0$ :
 $$P[A|B] = \frac{P[B|A]P[A]}{P[B]} \ .$$
 
@@ -91,9 +91,9 @@ $$\text{logit}(p) = \log\left(\frac{p}{1 - p}\right) , $$ on la notació $\log$ 
 Recorda que els valors de $ppm$ van entre $1$ i $10^6$. Modifica la fòrmula anterior. 
 ```
 
-# Llibreries
-
 ## Llibreries
+
+### Llibreries
 
 Activem les llibreries necessàries i algunes opcions:
 
@@ -111,7 +111,7 @@ library("bayesplot")
 library("ggplot2")
 ```
 
-## L'exemple de referència
+### L'exemple de referència
 
 Aquest material està inspirat a l'annex de @Rcompanion3rd, posat a disposició pels autors.
 <!--  An R Companion to Applied Regression, #3rd Edition 
@@ -123,11 +123,13 @@ Aquest material està inspirat a l'annex de @Rcompanion3rd, posat a disposició 
 
 En aquest tutorial repassarem els conceptes bàsics de l'estimació bayesiana i mostrarem com utilitzar el programa Stan, a través del paquet rstan, per a l'estimació bayesiana en general.
 
-# Idees bayesianes bàsiques
+Ara obre una sessió de R a RStudio, defineix el directori i obre un nou script. Ja pots seguir el  tutorial. Pots copiar el codi al teu script i executar-lo.
+
+## La situació de referència
 
 Per revisar els conceptes bàsics de l'estimació bayesiana, adaptem un exemple de [@Rcompanion3rd, Sec. 3.7]  <!--(2009, Secció 3.7)-->, que casualment és similar a un exemple en [@Stan, Sec. 2.1]<!--(Carpenter et al. (2017, Secció 2.1))-->: 
 
-## La situació:
+### La situació:
 
 Volem estimar la probabilitat $0 \leq \phi \leq  1$ que una moneda surti cara, pensant en aquest paràmetre desconegut com una propietat de la moneda. Estem impacients, així que recopilem dades llançant la moneda només 10 vegades, d'on obtenim la seqüència $H; H; T; H; T; T; T; T; H; T$ de cares ($H$) i creus ($T$) (Utilitzem H per Heads  i T per Tails en anglès. Així evitem un problema amb la tria de la lletra per a la notació de creus). 
 
@@ -225,7 +227,10 @@ La versió del Teorema de Bayes que es presenta en cursos introductoris és la s
 
 En el paradigma Bayesià els paràmetres són aleatoris. En contrast amb l'estimació de màxima versemblança, que es basa únicament en les dades observades, la inferència bayesiana requereix que expressem les nostres _creences prèvies_ (_priori_) sobre el paràmetre $\phi$ com una funció de densitat de probabilitat sobre els valors que pot prendre, i es combina aquesta distribució a priori amb la funció de versemblança.
 
-Per exemple, si creiem que tots els valors de $\phi$, $\phi \in [0,1]$, són igualment probables, això implica una distribució a priori plana, $p(\phi$) = 1. És a dir, considerem que tots els valors de l'intèrval [0,1] tenen la mateixa probabilitat. (Observeu que és densitat perquè l'àrea sota la corresponent corba és 1: $\int_1^0 p(\phi) d\phi = 1$).
+### El priori pla
+
+Si no tenim idees a priori sobre el paràmetre $\phi$, és a dir si creiem que tots els valors de $\phi$, $\phi \in [0,1]$, són igualment probables, estem establint una distribució a priori plana,  $p(\phi)$ = 1. 
+<!--És a dir, considerem que tots els valors de l'intèrval [0,1] tenen la mateixa probabilitat.--> (Observeu que estem parlant d'una densitat perquè l'àrea sota la corresponent corba és 1: $\int_1^0 p(\phi) d\phi = 1$).
 
 La densitat a posteriori bayesiana de $\phi$ és el producte de la densitat a priori i la versemblança, normalitzada per integrar a 1:
 
@@ -233,16 +238,22 @@ La densitat a posteriori bayesiana de $\phi$ és el producte de la densitat a pr
 P(\phi|data) = \frac{p(\phi)L(\phi|data)}{\int_{0}^{1}P(\phi')L(\phi'|data)d\phi'}
 \]
 
-Si triem la distribució a priori plana p($\phi$) = 1, la densitat a posteriori és simplement proporcional a la versemblança. Podem representar la densitat a posteriori i fer inferència amb la corba complerta. Però si prenem la moda de la densitat a posteriori com a representant de la corba i l'utilitzam com a estimació puntual bayesiana de $\phi$, llavors les estimacions bayesianes i de màxima versemblança coincideixen. Alternativament, podríem utilitzar la mitjana o la mediana de la densitat  a posteriori com a representants de la corba de densitat.
+Fixeu-vos que si triem aquesta distribució a priori plana $p(\phi)$ = 1, aleshores la densitat a posteriori és simplement proporcional a la versemblança. 
 
-A partir de la densitat a posteriori també podem calcular un equivalent bayesià d'un interval de confiança, anomenat _interval de credibilitat_, basat en quantils de la distribució a posteriori; per exemple, la probabilitat és del 0.95 que $\phi$ estigui entre els quantils 0.025 i 0.975. Per tant, un interval de credibilitat té una interpretació més directa que un interval de confiança *frequentista*: els bayesians consideren els paràmetres desconeguts com a variables aleatòries.
+Un cop disposem de la densitat a posteriori, podem representarla i fer inferència amb la corba complerta. En ocasions ens demanen un valor representatiu d'aquesta corba. En aquest cas és usual prendre la moda de la densitat a posteriori com a representant de la corba i aquesta s'utilitza com a estimació puntual bayesiana de $\phi$.  També podríem utilitzar la mitjana o la mediana de la densitat  a posteriori com a representants de la corba de densitat.
 
-### Un detall important
-Una detall sorprenent és que una distribució a priori uniforme pel paràmetre \(\phi\) no és en general una distribució a priori uniforme si utilitzem una transformació del paràmetre \(\phi\), com ara la transformació logit \(\phi' = \log[\phi/(1-\phi)]\), i viceversa. De fet, una distribució a priori uniforme en \(\phi'\) és impròpia (envolta una àrea infinita, no 1), perquè \(\phi'\) no està acotada ni a baix ni a dalt, i atorga una alta probabilitat als valors de \(\phi\) que estan prop de zero i de 1. És possible formular un priori, anomenat _priori de Jeffreys_, que sigui invariant respecte a la transformació d'un paràmetre, però també té les seves limitacions (veure, per exemple, [@PhilosphyBayesian Sec. 2.8]). <!--Si no esteu familiaritzats amb el càlcul, aquesta equació simplement estableix que l'àrea sota la línia horitzontal recta \(p(\phi) = 1\) entre \(\phi = 0\) i \(\phi = 1\), és a dir, el quadrat unitari, envolta una àrea de 1.-->
+Si el priori és pla i utilitzem la moda com a representant del posteriori, aleshores l'estimació puntual bayesiana i de màxima versemblança ens coincidiran. Per altres prioris, les estimacions puntuals seran diferents.
 
-## Altres prioris
+A partir de la densitat a posteriori també podem calcular un equivalent bayesià d'un interval de confiança, anomenat _intèrval de credibilitat_, basat en quantils de la distribució a posteriori; per exemple, la probabilitat és del 0.95 que $\phi$ estigui entre els quantils 0.025 i 0.975. Per tant, un interval de credibilitat té una interpretació més directa que un interval de confiança *frequentista*: els bayesians consideren els paràmetres desconeguts com a variables aleatòries.
 
-A l'apartat anterior hem utilitzal la distribució uniforme sobre [0,1] com a priori, és a dir, hem considerat que tots els valors de l'intèrval [0,1] eren igual de probables com a valors de $\phi$. Suposem ara que tenim creences a priori més fortes sobre el valor de $\phi$. Per exemple, mirem la moneda i observem que té tant una cara com una creu, i que no sembla que hi hagi pesos diferents a les dues cares. Deduïm que $\phi$ ha de ser bastant a prop de 0.5, segurament entre 0.2 i 0.8. Per a modelitzar aquesta idea prèvia, utilitzarem un altre model de probabilitat. La família de distribucions Beta proporciona un conjunt flexible de densitats a priori per a una paràmetre com $\phi$, que té suport a [0,1]. Les distribucions Beta depenen de dos paràmetres de forma, $\alpha$ i $\beta$, i tenen  funció de densitat:
+#### Un detall (per una segona lectura)  
+Una detall rellevant és que una distribució a priori uniforme pel paràmetre \(\phi\) no és en general una distribució a priori uniforme si utilitzem una transformació del paràmetre \(\phi\), com ara la transformació logit \(\phi' = \log[\phi/(1-\phi)]\), i viceversa. 
+
+De fet, una distribució a priori uniforme en \(\phi'\) és impròpia (envolta una àrea infinita, no 1), perquè \(\phi'\) no està acotada ni a baix ni a dalt, i atorga una alta probabilitat als valors de \(\phi\) que estan prop de zero i de 1. És possible formular un priori, anomenat _priori de Jeffreys_, que sigui invariant respecte a la transformació d'un paràmetre, però també té les seves limitacions (veure, per exemple, [@PhilosphyBayesian Sec. 2.8]). <!--Si no esteu familiaritzats amb el càlcul, aquesta equació simplement estableix que l'àrea sota la línia horitzontal recta \(p(\phi) = 1\) entre \(\phi = 0\) i \(\phi = 1\), és a dir, el quadrat unitari, envolta una àrea de 1.-->
+
+### Altres prioris
+
+A l'apartat anterior hem utilitzat la distribució uniforme sobre [0,1] com a priori, és a dir, hem considerat que tots els valors de l'intèrval [0,1] eren igual de probables com a valors de $\phi$. Suposem ara que tenim creences a priori més fortes sobre el valor de $\phi$. Per exemple, mirem la moneda i observem que té tant una cara com una creu, i que no sembla que hi hagi pesos diferents a les dues cares. Deduïm que $\phi$ ha de ser bastant a prop de 0.5, segurament entre 0.2 i 0.8. Per a modelitzar aquesta idea prèvia, utilitzarem un altre model de probabilitat. La família de distribucions Beta proporciona un conjunt flexible de densitats a priori per a una paràmetre com $\phi$, que té suport a [0,1]. Les distribucions Beta depenen de dos paràmetres de forma, $\alpha$ i $\beta$, i tenen  funció de densitat:
 
 \[
 P[\phi| \alpha,\beta] = \frac{\phi^{\alpha-1}(1-\phi)^{\beta-1}}{B(\alpha,\beta} \ per \  0\leq\phi\leq 1
@@ -332,13 +343,13 @@ P[\phi|D] = \frac{P[\phi]L(\phi|D)}{\int\phi' P[\phi']L(\phi'|D)d\phi'}
 
 - La inferència es sol centrar en la densitat a posteriori marginal de cada un dels paràmetres individuals $\phi_j$ en $\phi$, per a la qual, per exemple, podem formular una estimació puntual, com la mitjana a posteriori, i un intèrval de credibilitat.
 
-## Sempre es pot treballar així?
+### Sempre es pot treballar així?
 El cas triat és especial perquè la densitat a posteriori té una expressió analítica, que a més identifiquem com un densitat `Beta`.
 
 En la majoria d'aplicacions no és tan senzill. Els prioris multidimensionals no són analítics i cal emprar mètodes computacionals per a aproximar-los, sovint amb tècniques de càlcul intensiu. 
 A la Part2 d'aquest tutorial veurem com plantejaríem la resolució del problema utilitzant eines específiques, en aquest cas `RStan`.
 
-## Referències {-} 
+### Referències {-} 
 
 
 
